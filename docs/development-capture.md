@@ -83,3 +83,11 @@ encrypted records byte for byte when supplied their captured IV and padding.
 These observations validate the format against this heater, but do not yet
 prove a locally generated notification or a fully offline cloud replacement.
 Raw captures, identities and keys remain private and are not included here.
+
+A second bounded run forwarded HTTPS and both UDP ports through the Green.
+A read-only app status request produced a decoded UDP notify, the heater's
+acknowledgment, an HTTPS commands GET and a fresh telemetry POST. The service
+forwarded 26 datagrams with no reported TLS failures. Both runs removed their
+router rules and left the capture service inactive. This verifies the relay
+path; no locally generated notification, WAN-blocked operation, or HA control
+cutover has been proven yet.
