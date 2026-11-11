@@ -3,24 +3,24 @@
 An experimental local-control project for A.O. Smith iCOMM NextGen heat-pump water
 heaters. Developed against an HPTS-80 (controller firmware 5.4).
 
-**Development status:** protocol codec tested against captured commands; direct
-LAN provisioning is in progress. The config flow, callback listener, and entity
-load on Home Assistant 2026.10.4; physical local control remains unverified. This
-is not yet a ready-to-install community release.
+**Development status:** native LAN reads and a 130→129→130°F target test passed
+on Home Assistant Green with the heater's Internet access blocked. Fresh LAN
+readback also recovered after an integration reload and a physical heater reboot
+while the provisioning server was stopped. This remains an experimental,
+single-model project rather than a broadly validated community release.
 
-## Target architecture
+## Architecture
 
-The current development plan is a fully local **HTTPS + UDP cloud emulator**
-running as a Home Assistant add-on on the Green, with a small custom integration
-for entities. No NUC or vendor account should be required during normal operation.
-The emulator and its real-device acceptance tests are not yet implemented.
+The Green-hosted local cloud emulator is a **one-time provisioning and recovery
+tool**: it enables the heater's native LAN API and supplies a private key. Normal
+operation uses Home Assistant's LAN callback integration directly; it needs no
+active proxy, emulator, vendor account or NUC service. Keep the heater's Internet
+access blocked so vendor configuration does not disable LAN access again.
 
-See the [implementation and validation plan](docs/cloud-emulator-plan.md).
-
-The existing code is an experimental direct-LAN callback prototype. It loads on
-HA, but provisioning has not succeeded on the development heater and it does not
-provide local control yet. Its [provisioning research](docs/provisioning.md) is a
-separate path, not a prerequisite for the emulator.
+See the [current architecture and hardware evidence](docs/local-control-architecture.md)
+and [provisioning/development procedure](docs/development-capture.md). The
+[original full-cloud-emulation plan](docs/cloud-emulator-plan.md) records the
+research path that led to this simpler runtime.
 
 ## Development
 
@@ -32,7 +32,7 @@ python -m unittest discover -s tests -v
 
 For a provisioned device, copy `custom_components/icomm_local` into Home
 Assistant's `custom_components` directory and restart. Add **iCOMM Local** in
-Settings → Devices & services, entering the heater IPv4 address, HA callback
+Settings → Devices & services, choose **Previously provisioned LAN key**, and enter the heater IPv4 address, HA callback
 IPv4 address, LAN key/key ID, and callback port (default 8888). Reserve both
 IP addresses. Keep callback traffic on a trusted LAN; no Internet port forwards.
 Only one local controller should manage the heater's callback session.

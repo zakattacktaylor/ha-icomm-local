@@ -1,8 +1,11 @@
 # Fully local Ayla/iCOMM cloud emulator: implementation plan
 
-Status: implementation in progress, November 11, 2026. Target: the tested HPTS-80, controller
-firmware 5.4. Device support beyond that profile requires separate validation.
-This plan replaces LAN-key provisioning as the main development path.
+Status: historical implementation plan, superseded by the validated native LAN
+runtime. The local cloud service now provisions/enables LAN access and supplies
+a key; direct HA LAN reads/writes survived an integration reload and physical
+heater reboot with Internet and the emulator unavailable. See
+[the current architecture](local-control-architecture.md). The original plan
+below is retained as research context, not a statement of current limitations.
 
 ## Objective and completion criteria
 

@@ -1,8 +1,41 @@
 {
- "title":"iCOMM Local",
- "config":{
-  "step":{"user":{"title":"Connect to a provisioned iCOMM heater","description":"A LAN key must already be provisioned. The callback address is this Home Assistant machine's LAN IPv4 address. No cloud account is used.","data":{"host":"Heater IPv4 address","callback_host":"Home Assistant IPv4 address","lan_key":"LAN key","key_id":"LAN key ID","port":"Callback TCP port","maximum":"Maximum allowed target (°F)"}}},
-  "error":{"invalid_config":"Check the private IPv4 addresses and 16–32 character LAN key."},
-  "abort":{"already_configured":"This heater is already configured."}
- }
+  "title": "iCOMM Local",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect a local iCOMM heater",
+        "menu_options": {
+          "emulator": "Local emulator add-on (experimental)",
+          "lan": "Previously provisioned LAN key"
+        }
+      },
+      "lan": {
+        "title": "Connect to a provisioned iCOMM heater",
+        "description": "A LAN key must already be provisioned. The callback address is this Home Assistant machine's LAN IPv4 address. No cloud account is used.",
+        "data": {
+          "host": "Heater IPv4 address",
+          "callback_host": "Home Assistant IPv4 address",
+          "lan_key": "LAN key",
+          "key_id": "LAN key ID",
+          "port": "Callback TCP port",
+          "maximum": "Maximum allowed target (\u00b0F)"
+        }
+      },
+      "emulator": {
+        "title": "Connect to the local emulator",
+        "description": "Enter the Home Assistant add-on IPv4 address and its separate management token. The local emulator and routing must already be configured. No vendor account is used.",
+        "data": {
+          "host": "Emulator IPv4 address",
+          "api_token": "Emulator management token",
+          "port": "Management TCP port"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Check the private IPv4 address and the key or management token."
+    },
+    "abort": {
+      "already_configured": "This heater is already configured."
+    }
+  }
 }

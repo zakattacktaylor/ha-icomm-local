@@ -1,5 +1,10 @@
 # Green-hosted capture harness
 
+Current outcome: one-time local provisioning enables the native LAN integration.
+Reads, target changes and cold-start recovery passed with the emulator stopped.
+See [current architecture](local-control-architecture.md); the sections below
+record the development sequence and its earlier, superseded limitations.
+
 Implementation: `addons/icomm_emulator`. This is the first development milestone,
 not a finished cloud replacement. The add-on has been built on an ARM64 Green,
 and its legacy TLS profile and management authentication were checked there.
@@ -125,3 +130,63 @@ local UDP registration, generated notification delivery and control have not yet
 passed the offline hardware test. The emulator client/config flow is implemented
 in the integration source but has not been installed on the Green. The original
 LAN-key path is retained. Do not treat this version as ready for routine use.
+
+### Recovery work in 0.3.0-dev2
+
+The local authentication token was accepted during a fresh startup (subsequent
+identity requests used that token), but startup did not complete. Changing XML
+serialization/framing alone did not resolve it. An offline check using a
+related agent's original XML parser accepted both the captured and generated
+identity, including byte-at-a-time input; this is supporting evidence, not a
+hardware diagnosis for this module version.
+
+The service now acknowledges device metadata PUTs and records unsupported route
+shapes without authentication headers or body values. It keeps the captured ANS
+hostname: the trial router redirects both notification ports regardless of the
+resolved destination. A verified encrypted keepalive can resume a session after
+an add-on restart. For unknown keys, format-3 encrypted request echoes and
+format-2 registration echoes implement the related agent's authenticated error
+recovery, with a per-peer rate limit. Echoes preserve all signed/encrypted bytes
+and change only the outer format. Hardware recovery is still being tested.
+
+### Local hardware milestones and remaining readback gate
+
+Generated-key bootstrap and unknown-key recovery have now passed with the
+heater's routed Internet path blocked. A locally generated notification was
+acknowledged and caused an HTTPS commands fetch. No further physical restart
+was needed after recovery support was added. Router conntrack showed HTTPS and
+UDP replies coming from the Green; the only other unicast flow was local DNS.
+
+The server can also deliver a read-only reverse-REST command and receive its
+correlated PUT response. The first `property.json` resource variant returned
+404 on the tested module. Four fixed property-read path variants are tested in
+order, once each on 404; exhausted candidates stop polling rather than inventing
+a reading. Neither this query nor the reporting mask/rate has yet produced fresh
+telemetry during a fully local bootstrap. A prior local HTTPS upload proved the
+telemetry decoder, but it followed a cloud bootstrap and is not a replacement
+for this acceptance gate. No temperature or mode test has been attempted while
+this gate is unresolved.
+
+Reporting uses the captured mask and the exact captured rate value 21601; its
+bit/interval semantics are not claimed. No other rate values are accepted.
+The local key is generated once per installation, retained privately and supplied
+in the identity response. No saved cloud key is required by the current setup.
+
+### Permission distinction and local LAN provisioning
+
+The related agent registers `GET /property.json` for `APP_REQ` and
+`PUT /lanip.json` for `ADS_REQ`. A cloud reverse-REST property read therefore
+returns 404 even when the LAN application endpoint exists. All four fixed path
+variants returned 404 in the cloud context; they are not evidence that the LAN
+query itself is absent. See the agent's
+[route table](https://github.com/ddkity/Roomba1.4.3/blob/master/component/common/ayla/libada/client.c).
+
+The local server can now set the identity's LAN-enable flags and answer
+`GET /devices/<id>/lan.json` with a private installation key. A one-shot,
+correlated `PUT lanip.json` reverse-REST command supplies the same key for
+recovery when a unit already retains a foreign key. The private profile uses
+`lanip: {status: "enable", lanip_key, lanip_key_id, keep_alive: 30, auto_sync: 1}`.
+It is never included in management status. This writes the device's LAN-access
+configuration; it does not issue a heater temperature/mode command. The existing
+HA LAN callback integration can then use the application-privileged property
+query. This path is under hardware validation with Internet routing blocked.

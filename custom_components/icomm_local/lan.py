@@ -37,7 +37,7 @@ class LocalHeater:
 
     @property
     def available(self):
-        return self.state is not None and time.time() - self.last_update < 120
+        return self._registered and self.last_error is None and self.state is not None and time.time() - self.last_update < 120
 
     async def start(self):
         app = web.Application(client_max_size=65536)
@@ -143,6 +143,8 @@ class LocalHeater:
                 self.last_contact = time.time()
                 if path == 'key_exchange.json' and request.method == 'POST':
                     result = self.session.exchange((await request.json())['key_exchange'])
+                    self.state=None;self.last_update=0.0
+                    self.on_update()
                     self.event('key_exchange')
                     return web.json_response(result)
                 if path == 'commands.json' and request.method == 'GET':
