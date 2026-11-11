@@ -67,3 +67,5 @@ Protocol discoveries and prior implementation references:
   during characterization; this integration does not use that API at runtime.
 
 This is an independent community project, unaffiliated with A.O. Smith or Ayla.
+
+Read-only findings about the embedded web server are in [HTTP surface observations](docs/http-surface.md).
