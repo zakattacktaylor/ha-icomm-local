@@ -118,6 +118,18 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(b'403 Forbidden',await reader.read());writer.close();await writer.wait_closed()
         finally:server.close();await server.wait_closed()
 
+    async def test_identity_fixed_length_experiment_preserves_xml_and_hides_query_values(self):
+        self.service.profile['response_framing']='length'
+        response=await self.client.get('/dsns/SYNTHETIC.xml?ans=synthetic-private-value')
+        body=await response.read()
+        self.assertEqual(response.status,200)
+        self.assertEqual(int(response.headers['Content-Length']),len(body))
+        self.assertNotIn('Transfer-Encoding',response.headers)
+        self.assertEqual(ET.fromstring(body).tag,'device')
+        event=self.service.events[-1]
+        self.assertEqual(event[2],{'query_keys':['ans']})
+        self.assertNotIn('synthetic-private-value',str(event))
+
     async def test_https_ping_returns_server_time_for_recovery(self):
         response=await self.client.get('/ping?time=1')
         self.assertEqual(response.status,200);self.assertEqual(await response.read(),b'')

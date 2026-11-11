@@ -206,3 +206,12 @@ with server time, and closes the connection. It never forwards traffic or serves
 management/control routes. The trial router redirects heater TCP 80 to 8788;
 HTTPS recovery pings are also supported on the bounded TLS listener. This is a
 compatibility fix, not evidence that LAN-only actuation is resolved.
+
+The private profile may set `response_framing` to `length` for a fixed-length XML
+response comparison; the default remains `chunked`. The fixed-length trial did
+not restore registration or actuation on the tested unit. Identity events record
+query parameter names only, never values. A `snapshot` parameter was present;
+its meaning for this device has not been confirmed. Reconnecting only the
+heater's Wi-Fi triggered a new attempt but did not complete the local bootstrap.
+The last target test still failed verification, with a subsequent fresh reading
+confirming 130°F Hybrid. Neither framing change resolves the open control issue.

@@ -124,6 +124,7 @@ class LocalService:
 
     def load_profile(self):
         profile=json.loads((self.root/'profile.json').read_text())
+        if profile.get('response_framing','chunked') not in ('chunked','length'):raise ValueError('Invalid response framing')
         identity=ET.fromstring(profile['identity_xml'])
         key=base64.b64decode(identity.findtext('ans-cipher-key'),validate=True)[:16]
         if len(key)!=16:raise ValueError('Invalid notification key')
@@ -258,7 +259,7 @@ class LocalService:
             ET.indent(element,space='  ')
             body=b'<?xml version="1.0" encoding="UTF-8"?>\n'+ET.tostring(element,encoding='utf-8',short_empty_elements=False)
         response=web.Response(body=body,content_type='application/xml',charset='utf-8',headers=headers)
-        response.enable_chunked_encoding()
+        if self.profile.get('response_framing','chunked')=='chunked':response.enable_chunked_encoding()
         return response
 
     async def http(self, request):
@@ -277,7 +278,7 @@ class LocalService:
                 for name in ('lan-enabled','local-access-enabled'):
                     identity=re.sub(r'(<'+name+r'>)[^<]*(</'+name+r'>)',lambda match:match[1]+'true'+match[2],identity)
             phase='initial' if 'x-ayla-client-auth' in request.headers else 'key'
-            self.events.append(('identity_'+phase,time.time()))
+            self.events.append(('identity_'+phase,time.time(),{'query_keys':sorted(request.query.keys())}))
             return self.xml_response(identity.encode())
         prefix=f'/devices/{self.device_id}'
         if request.method=='GET' and path==prefix+'/lan.json' and self.profile.get('lanip'):

@@ -9,8 +9,9 @@ bc2.11.4. Other models/versions require their own validation.
 two 129°F requests were acknowledged but not reflected in readback; 130°F was
 confirmed restored. The successful earlier 129→130°F test had the local server
 running. Reads and physical cold-start recovery alone do not prove that every
-runtime service can be removed. A bounded backend-present comparison is in
-progress. The related agent has an explicit MCU-overflow path that acknowledges
+runtime service can be removed. A bounded backend-present comparison could not complete notification
+registration after cold start. A malformed HTTP ping was fixed, but identity
+requests still do not progress to registration; reliable actuation remains open. The related agent has an explicit MCU-overflow path that acknowledges
 but drops writes; this is a hypothesis, not a diagnosis for this firmware.
 
 Home Assistant's `icomm_local` integration communicates directly with the heater
