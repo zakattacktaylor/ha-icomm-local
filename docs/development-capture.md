@@ -91,3 +91,37 @@ forwarded 26 datagrams with no reported TLS failures. Both runs removed their
 router rules and left the capture service inactive. This verifies the relay
 path; no locally generated notification, WAN-blocked operation, or HA control
 cutover has been proven yet.
+
+## Experimental local service (0.3.0-dev1)
+
+`emulator.py` adds a single-device HTTPS endpoint and UDP notification server,
+with no upstream network client. Authenticated management routes are:
+
+- `PUT /emulator/profile`: provision private captured identity XML, device ID,
+  DSN, local ANS IPv4 address and optional existing registration ID. Never commit
+  this profile. Provisioning is refused while either implementation is active.
+- `POST /emulator/start` with `seconds` (10–300), `/emulator/stop`, and
+  `GET /emulator/status`: bounded runtime, fresh telemetry and event summaries.
+- `POST /emulator/notify`: an empty-command notification for transport testing.
+- `POST /emulator/control` with `kind` (`target` or `mode`) and `value`: requires
+  a local notification session and telemetry younger than 120 seconds. Commands
+  are delivered once, expire after 30 seconds, and require post-delivery telemetry
+  for confirmation. No captured cloud commands or schedules are replayed.
+
+Capture and emulation are mutually exclusive. A generated local auth token is
+used in responses; captured cloud authentication headers are not replayed.
+`tools/router-emulator-window.sh` provides a separate maximum-240-second router
+watchdog for source-scoped redirects and routed IPv4/IPv6 denial. Its LAN subnet
+is currently specific to the development installation and must be reviewed
+before using elsewhere. These rules are not a persistent production deployment.
+
+The add-on includes generated copies of the pure protocol modules because its
+Docker build context is its own directory. Run `python3 tools/prepare_addon.py`
+after changing the integration codecs; a test checks these copies match.
+
+Hardware status: local HTTPS telemetry has been received with routed Internet
+access blocked. Initial local identity/bootstrap retries remain under diagnosis;
+local UDP registration, generated notification delivery and control have not yet
+passed the offline hardware test. The emulator client/config flow is implemented
+in the integration source but has not been installed on the Green. The original
+LAN-key path is retained. Do not treat this version as ready for routine use.

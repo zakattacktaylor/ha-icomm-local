@@ -7,9 +7,14 @@ async def async_setup_entry(hass, entry):
     from homeassistant.helpers.dispatcher import async_dispatcher_send
     from .lan import LocalHeater
     data = entry.data
-    heater = LocalHeater(data['host'], data['callback_host'], data['lan_key'],
-        data['key_id'], data['port'], data['maximum'],
-        on_update=lambda: async_dispatcher_send(hass, f'{DOMAIN}_{entry.entry_id}'))
+    on_update=lambda: async_dispatcher_send(hass, f'{DOMAIN}_{entry.entry_id}')
+    if data.get('connection')=='emulator':
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from .emulator_client import EmulatorHeater
+        heater=EmulatorHeater(async_get_clientsession(hass),data['host'],data['api_token'],on_update,data.get('port',8787))
+    else:
+        heater = LocalHeater(data['host'], data['callback_host'], data['lan_key'],
+            data['key_id'], data['port'], data['maximum'],on_update=on_update)
     await heater.start()
     entry.runtime_data = heater
     try:

@@ -284,6 +284,53 @@ def create_app(harness, token):
         if not directory.is_dir():raise web.HTTPNotFound()
         if harness.capture_id==name:raise web.HTTPConflict(text='Stop the capture before exporting')
         return web.Response(body=await asyncio.to_thread(archive,directory),content_type='application/gzip')
+    # Both implementations share the token middleware above and the same ports.
+    from emulator import LocalService
+    emulator=LocalService(harness.root,harness.allowed_peers)
+    async def emulator_start(request):
+        if harness.capture_id:raise web.HTTPConflict(text='Capture is active')
+        try:
+            return web.json_response(await emulator.start((await request.json()).get('seconds',300),harness.tls_context()))
+        except (ValueError,KeyError,FileNotFoundError) as error:raise web.HTTPBadRequest(text=str(error)) from None
+    async def emulator_profile(request):
+        if emulator.active or harness.capture_id:raise web.HTTPConflict(text='Stop listeners before provisioning')
+        try:
+            profile=await request.json()
+            if not isinstance(profile,dict):raise ValueError('Expected an object')
+            identity=__import__('xml.etree.ElementTree',fromlist=['ElementTree']).fromstring(profile['identity_xml'])
+            import base64
+            if len(base64.b64decode(identity.findtext('ans-cipher-key'),validate=True))<16:raise ValueError('Invalid ANS key')
+            if not profile['dsn'].isalnum() or not str(profile['device_id']).isdigit():raise ValueError('Invalid device identity')
+            if not ipaddress.IPv4Address(profile['local_ans_host']).is_private:raise ValueError('Expected a local ANS address')
+            seed=profile.get('resume_registration_id')
+            if seed is not None and len(bytes.fromhex(seed))!=4:raise ValueError('Invalid registration ID')
+            target=harness.root/'profile.json';temporary=target.with_suffix('.tmp')
+            temporary.write_text(json.dumps(profile));temporary.chmod(0o600);temporary.replace(target)
+            return web.json_response({'configured':True})
+        except (ValueError,KeyError,TypeError) as error:raise web.HTTPBadRequest(text='Invalid private profile') from None
+    async def emulator_stop(request):return web.json_response(await emulator.stop())
+    async def emulator_status(request):return web.json_response(emulator.status())
+    async def emulator_notify(request):
+        try:return web.json_response(emulator.notify())
+        except ValueError as error:raise web.HTTPConflict(text=str(error)) from None
+    async def emulator_control(request):
+        try:
+            data=await request.json()
+            return web.json_response(emulator.queue(data['kind'],data['value']))
+        except (ValueError,KeyError,TypeError) as error:raise web.HTTPBadRequest(text=str(error)) from None
+    async def guard_capture(request,handler):
+        if request.path=='/capture/start' and emulator.active:
+            raise web.HTTPConflict(text='Emulator is active')
+        return await handler(request)
+    app.middlewares.append(web.middleware(guard_capture))
+    app.router.add_put('/emulator/profile',emulator_profile)
+    app.router.add_post('/emulator/start',emulator_start)
+    app.router.add_post('/emulator/stop',emulator_stop)
+    app.router.add_get('/emulator/status',emulator_status)
+    app.router.add_post('/emulator/control',emulator_control)
+    app.router.add_post('/emulator/notify',emulator_notify)
+    async def close_emulator(app):await emulator.stop()
+    app.on_cleanup.append(close_emulator)
     app.router.add_get('/status',status)
     app.router.add_post('/capture/start',start)
     app.router.add_post('/capture/stop',stop)

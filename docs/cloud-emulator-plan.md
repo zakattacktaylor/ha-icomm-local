@@ -1,6 +1,6 @@
 # Fully local Ayla/iCOMM cloud emulator: implementation plan
 
-Status: planned, November 11, 2026. Target: the tested HPTS-80, controller
+Status: implementation in progress, November 11, 2026. Target: the tested HPTS-80, controller
 firmware 5.4. Device support beyond that profile requires separate validation.
 This plan replaces LAN-key provisioning as the main development path.
 
@@ -28,9 +28,11 @@ account, utility, firmware-update, or ownership service.
 | UDP codec | Related agent source and synthetic decoder tests available | Compatibility with this network-module firmware and its current key |
 | HA | Prototype config entry/listener/entity load on Green | Emulator-backed operation, availability and recovery |
 
-The prior filtered UDP captures contained zero packets. The decoder has only
-synthetic test coverage: no real UDP packet has yet passed its checksum/key
-validation. Related source is a hypothesis until checked against this unit.
+Milestone 1 passed on November 11: real UDP registration signing and encrypted
+packet CRCs were validated, and a Green-hosted relay observed notify → ack →
+HTTPS commands GET → telemetry. A first bounded local-server trial received
+HTTPS telemetry with Internet access blocked; fresh local bootstrap and control
+remain unproven. See `development-capture.md` for implementation/test status.
 
 Past proxy errors changed the HTTP Host authority and may have caused long
 retry delays. Preserve the original OEM Host when forwarding to the real cloud;
