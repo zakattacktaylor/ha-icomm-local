@@ -105,6 +105,7 @@ class LocalService:
     def __init__(self, root, allowed_peers):
         self.root, self.allowed_peers = Path(root), set(allowed_peers)
         self.active=False;self.runner=None;self.udp=[];self.tasks=set();self.timer=None
+        self.ping_server=None;self.ping_writers=set()
         self.profile=None;self.key=None;self.dsn=None;self.device_id=None
         self.registration_id=None;self.peer=None;self.notify_sequence=0
         self.pending=None;self.reading=None;self.reading_at=0;self.events=[]
@@ -161,6 +162,7 @@ class LocalService:
             app.router.add_route('*','/{path:.*}',self.http)
             self.runner=web.AppRunner(app,access_log=None);await self.runner.setup()
             await web.TCPSite(self.runner,'0.0.0.0',8444,ssl_context=tls_context).start()
+            self.ping_server=await asyncio.start_server(self.raw_ping,'0.0.0.0',8788,limit=4096)
             for port in (55055,55056):
                 channel=Notifications(self,port)
                 transport,_=await asyncio.get_running_loop().create_datagram_endpoint(lambda c=channel:c,local_addr=('0.0.0.0',port))
@@ -180,8 +182,33 @@ class LocalService:
             await self.stop();raise
         return self.status()
 
+    async def raw_ping(self, reader, writer):
+        # This firmware inserts CRLFCRLF before Content-Length: 0. Never pass
+        # this framing to the management HTTP parser or forward any request.
+        self.ping_writers.add(writer)
+        try:
+            peer=writer.get_extra_info('peername')
+            if not peer or peer[0] not in self.allowed_peers:
+                status='403 Forbidden'
+            else:
+                header=await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'),5)
+                line=header.split(b'\r\n',1)[0]
+                status='200 OK' if line in (b'GET /ping HTTP/1.1',b'GET /ping?time=1 HTTP/1.1') else '404 Not Found'
+                if status=='200 OK':self.events.append(('http_ping',time.time()))
+            writer.write(('HTTP/1.1 '+status+'\r\nContent-Length: 0\r\nConnection: close\r\nx-ayla-server-time: '+str(int(time.time()))+'\r\n\r\n').encode())
+            await writer.drain()
+        except (asyncio.TimeoutError,asyncio.IncompleteReadError,asyncio.LimitOverrunError,ConnectionError):
+            pass
+        finally:
+            self.ping_writers.discard(writer);writer.close()
+            try:await writer.wait_closed()
+            except ConnectionError:pass
+
     async def stop(self):
         self.active=False;self.pending=None
+        if self.ping_server:
+            self.ping_server.close();await self.ping_server.wait_closed();self.ping_server=None
+        for writer in list(self.ping_writers):writer.close()
         if self.timer and self.timer is not asyncio.current_task():self.timer.cancel()
         self.timer=None
         for task in list(self.tasks):task.cancel()

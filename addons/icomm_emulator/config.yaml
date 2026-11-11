@@ -1,5 +1,5 @@
 name: iCOMM emulator development harness
-version: "0.3.0-dev11"
+version: "0.3.0-dev12"
 slug: icomm_emulator
 description: Bounded HTTPS and UDP capture service for local iCOMM development
 arch:

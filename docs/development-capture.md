@@ -194,3 +194,15 @@ It is never included in management status. This writes the device's LAN-access
 configuration; it does not issue a heater temperature/mode command. The existing
 HA LAN callback integration can then use the application-privileged property
 query. This path is under hardware validation with Internet routing blocked.
+
+## Legacy recovery ping compatibility
+
+The tested firmware sends `GET /ping?time=1` with a blank line between Host and
+`Content-Length: 0`. A normal HTTP parser interprets that last header as another
+request and returns 400. During a bounded emulator window, TCP 8788 supplies a
+separate source-allowlisted listener for only `GET /ping` and `GET /ping?time=1`.
+It reads at most 4096 bytes with a five-second timeout, returns an empty response
+with server time, and closes the connection. It never forwards traffic or serves
+management/control routes. The trial router redirects heater TCP 80 to 8788;
+HTTPS recovery pings are also supported on the bounded TLS listener. This is a
+compatibility fix, not evidence that LAN-only actuation is resolved.

@@ -12,8 +12,8 @@ TAG="icomm-offline-$RUN_ID"
 rule() {
  op=$1; shift
  case "$1" in
- http-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p tcp --dport 80 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET:8787";;
- http-out) iptables -t nat "$op" POSTROUTING -s "$HEATER" -d "$TARGET" -p tcp --dport 8787 -m comment --comment "$TAG" -j SNAT --to-source "$GATEWAY";;
+ http-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p tcp --dport 80 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET:8788";;
+ http-out) iptables -t nat "$op" POSTROUTING -s "$HEATER" -d "$TARGET" -p tcp --dport 8788 -m comment --comment "$TAG" -j SNAT --to-source "$GATEWAY";;
  https-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p tcp --dport 443 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET:8444";;
  https-out) iptables -t nat "$op" POSTROUTING -s "$HEATER" -d "$TARGET" -p tcp --dport 8444 -m comment --comment "$TAG" -j SNAT --to-source "$GATEWAY";;
  udp-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p udp --dport 55055:55056 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET";;

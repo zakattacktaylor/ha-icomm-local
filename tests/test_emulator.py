@@ -101,6 +101,23 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
             generated=(root/'addons/icomm_emulator'/name).read_text().split('\n',1)[1]
             self.assertEqual(generated,(root/'custom_components/icomm_local'/name).read_text())
 
+    async def test_raw_ping_handles_legacy_blank_line_and_rejects_other_routes(self):
+        server=await asyncio.start_server(self.service.raw_ping,'127.0.0.1',0,limit=4096)
+        port=server.sockets[0].getsockname()[1]
+        try:
+            for request,expected in (
+                (b'GET /ping?time=1 HTTP/1.1\r\nHost: synthetic.invalid\r\n\r\nContent-Length: 0\r\n\r\n',b'200 OK'),
+                (b'GET /ping HTTP/1.1\r\nHost: synthetic.invalid\r\nContent-Length: 0\r\n\r\n',b'200 OK'),
+                (b'POST /emulator/control HTTP/1.1\r\nHost: synthetic.invalid\r\n\r\n',b'404 Not Found')):
+                reader,writer=await asyncio.open_connection('127.0.0.1',port)
+                writer.write(request);await writer.drain();response=await reader.read()
+                self.assertIn(expected,response);self.assertTrue(response.endswith(b'\r\n\r\n'))
+                writer.close();await writer.wait_closed()
+            self.service.allowed_peers=set()
+            reader,writer=await asyncio.open_connection('127.0.0.1',port)
+            self.assertIn(b'403 Forbidden',await reader.read());writer.close();await writer.wait_closed()
+        finally:server.close();await server.wait_closed()
+
     async def test_https_ping_returns_server_time_for_recovery(self):
         response=await self.client.get('/ping?time=1')
         self.assertEqual(response.status,200);self.assertEqual(await response.read(),b'')
