@@ -101,6 +101,12 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
             generated=(root/'addons/icomm_emulator'/name).read_text().split('\n',1)[1]
             self.assertEqual(generated,(root/'custom_components/icomm_local'/name).read_text())
 
+    async def test_https_ping_returns_server_time_for_recovery(self):
+        response=await self.client.get('/ping?time=1')
+        self.assertEqual(response.status,200);self.assertEqual(await response.read(),b'')
+        self.assertGreater(int(response.headers['x-ayla-server-time']),0)
+        self.assertEqual(self.service.events[-1][0],'https_ping')
+
     async def test_metadata_report_is_acknowledged_and_unknown_routes_are_visible(self):
         response=await self.client.put('/devices/123.xml',data='<device><model>synthetic</model></device>')
         self.assertEqual(response.status,200)
@@ -222,3 +228,18 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decode_datagram(notification,self.service.key)['operation'],'notify')
         with self.assertRaises(ValueError):decode_datagram(notification,foreign)
         self.assertEqual(sum(e[0]=='local_key_refresh_notification' for e in self.service.events),1)
+
+    async def test_authenticated_probe_recovers_existing_notification_session(self):
+        self.service.registration_id=None
+        reg=bytes.fromhex('abcdef01')
+        packet=encode_datagram(5,17,202,reg,self.service.key)
+        self.channel.datagram_received(packet,('127.0.0.1',49000))
+        reply,peer=self.channel.transport.sent[-1]
+        decoded=decode_datagram(reply,self.service.key)
+        self.assertEqual(decoded['operation'],'probe_response')
+        self.assertEqual(decoded['sequence'],17)
+        self.assertEqual(self.service.peer,('127.0.0.1',49000))
+
+    async def test_commissioning_lifetime_stays_bounded(self):
+        self.service.active=False
+        with self.assertRaises(ValueError):await self.service.start(901,None)

@@ -4,17 +4,20 @@ An experimental local-control project for A.O. Smith iCOMM NextGen heat-pump wat
 heaters. Developed against an HPTS-80 (controller firmware 5.4).
 
 **Development status:** native LAN reads and a 130→129→130°F target test passed
-on Home Assistant Green with the heater's Internet access blocked. Fresh LAN
+on Home Assistant Green with Internet access blocked and the local backend running. Fresh LAN
 readback also recovered after an integration reload and a physical heater reboot
 while the provisioning server was stopped. This remains an experimental,
 single-model project rather than a broadly validated community release.
 
 ## Architecture
 
-The Green-hosted local cloud emulator is a **one-time provisioning and recovery
-tool**: it enables the heater's native LAN API and supplies a private key. Normal
-operation uses Home Assistant's LAN callback integration directly; it needs no
-active proxy, emulator, vendor account or NUC service. Keep the heater's Internet
+The Green-hosted local cloud emulator enables the heater's native LAN API and
+supplies a private key. Its ongoing role in reliable control remains unresolved.
+Home Assistant uses the LAN callback integration directly. Reads and reboot
+recovery passed with the emulator stopped; write reliability in that configuration
+is still under investigation. A local keepalive service may be required by this
+firmware. No vendor Internet access is enabled during these tests. Keep the heater's
+Internet
 access blocked so vendor configuration does not disable LAN access again.
 
 See the [current architecture and hardware evidence](docs/local-control-architecture.md)

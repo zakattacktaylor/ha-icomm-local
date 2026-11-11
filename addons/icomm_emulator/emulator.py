@@ -66,7 +66,7 @@ class Notifications(asyncio.DatagramProtocol):
                         task=asyncio.create_task(refresh_key());service.tasks.add(task);task.add_done_callback(service.tasks.discard)
                 raise
             if service.registration_id is None:
-                if message['operation'] not in ('keepalive','request_probe'):return
+                if message['operation'] not in ('keepalive','request_probe','probe'):return
                 service.registration_id=packet[4:8]
                 service.events.append(('session_resumed',time.time()))
             elif packet[4:8] != service.registration_id:
@@ -81,7 +81,7 @@ class Notifications(asyncio.DatagramProtocol):
             elif operation == 'notify_response':
                 if message['sequence']==service.notify_sequence:
                     service.events.append(('notify_ack',time.time()))
-            if self.port==55055 and operation in ('keepalive','request_probe'):service.peer=peer
+            if self.port==55055 and operation in ('keepalive','request_probe','probe'):service.peer=peer
         except (ValueError,KeyError,IndexError,UnicodeError):
             service.invalid_datagrams += 1
 
@@ -150,7 +150,7 @@ class LocalService:
 
     async def start(self, seconds, tls_context):
         if self.active:raise ValueError('Emulator already active')
-        if not isinstance(seconds,int) or not 10<=seconds<=300:raise ValueError('Lifetime must be 10–300 seconds')
+        if not isinstance(seconds,int) or not 10<=seconds<=900:raise ValueError('Lifetime must be 10–900 seconds')
         self.load_profile();self.registration_id=None;self.peer=None;self.pending=None
         self.reading=None;self.reading_at=0;self.events=[];self.invalid_datagrams=0;self.key_refresh_sent=False
         self.uploads={};self.rejected_uploads=0
@@ -237,6 +237,9 @@ class LocalService:
     async def http(self, request):
         if request.remote not in self.allowed_peers:raise web.HTTPForbidden()
         path=request.path
+        if request.method=='GET' and path=='/ping':
+            self.events.append(('https_ping',time.time()))
+            return web.Response(body=b'',headers={'x-ayla-server-time':str(int(time.time()))})
         if request.method=='GET' and path==f'/dsns/{self.dsn}.xml':
             # Preserve the legacy agent's exact XML declaration/empty-tag style.
             identity=self.profile['identity_xml']

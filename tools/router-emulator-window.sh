@@ -7,11 +7,13 @@ case "$HEATER$TARGET$GATEWAY" in *[!0-9.]*) exit 2;; esac
 case "$HEATER_MAC" in *[!0-9a-fA-F:]*|'') exit 2;; esac
 case "$RUN_ID" in *[!a-zA-Z0-9_-]*|'') exit 2;; esac
 case "$WINDOW_SECONDS" in *[!0-9]*|'') exit 2;; esac
-[ "$WINDOW_SECONDS" -ge 10 ] && [ "$WINDOW_SECONDS" -le 240 ] || exit 2
+[ "$WINDOW_SECONDS" -ge 10 ] && [ "$WINDOW_SECONDS" -le 900 ] || exit 2
 TAG="icomm-offline-$RUN_ID"
 rule() {
  op=$1; shift
  case "$1" in
+ http-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p tcp --dport 80 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET:8787";;
+ http-out) iptables -t nat "$op" POSTROUTING -s "$HEATER" -d "$TARGET" -p tcp --dport 8787 -m comment --comment "$TAG" -j SNAT --to-source "$GATEWAY";;
  https-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p tcp --dport 443 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET:8444";;
  https-out) iptables -t nat "$op" POSTROUTING -s "$HEATER" -d "$TARGET" -p tcp --dport 8444 -m comment --comment "$TAG" -j SNAT --to-source "$GATEWAY";;
  udp-in) iptables -t nat "$op" PREROUTING -s "$HEATER" -p udp --dport 55055:55056 -m comment --comment "$TAG" -j DNAT --to-destination "$TARGET";;
@@ -21,12 +23,12 @@ rule() {
  esac
 }
 expire() {
- conntrack -D -s "$HEATER" -p tcp --dport 443 >/dev/null 2>&1 || true
+ for port in 80 443; do conntrack -D -s "$HEATER" -p tcp --dport "$port" >/dev/null 2>&1 || true; done
  for port in 55055 55056; do conntrack -D -s "$HEATER" -p udp --dport "$port" >/dev/null 2>&1 || true; done
 }
 cleanup() {
  changed=0
- for name in wan4 wan6 https-in https-out udp-in udp-out; do
+ for name in wan4 wan6 http-in http-out https-in https-out udp-in udp-out; do
   if rule -D "$name" >/dev/null 2>&1; then changed=1; fi
  done
  if [ "$changed" = 1 ]; then expire; fi
@@ -39,8 +41,10 @@ case "${1:-}" in
   # Preflight IPv6 support before any change. This is an IPv4 local service.
   ip6tables -S FORWARD >/dev/null
   trap cleanup EXIT HUP INT TERM
+  rule -I http-out
   rule -I https-out
   rule -I udp-out
+  rule -I http-in
   rule -I https-in
   rule -I udp-in
   rule -I wan4

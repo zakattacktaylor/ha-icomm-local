@@ -53,6 +53,20 @@ class UDPTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ManagementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ping_rejects_non_allowlisted_peer_even_with_management_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness=capture.Harness(Path(directory),['192.0.2.8'])
+            runner=web.AppRunner(capture.create_app(harness,'synthetic-management-token'))
+            await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
+            base='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])
+            try:
+                async with ClientSession() as session:
+                    for headers in ({},{'Authorization':'Bearer synthetic-management-token'}):
+                        async with session.get(base+'/ping?time=1',headers=headers) as response:
+                            self.assertEqual(response.status,403)
+                    self.assertEqual(getattr(harness,'http_ping_count',0),0)
+            finally:await runner.cleanup()
+
     async def test_api_requires_token_and_bad_lifetime_does_not_arm_listeners(self):
         with tempfile.TemporaryDirectory() as directory:
             harness=capture.Harness(Path(directory),['127.0.0.1'])
@@ -62,6 +76,10 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             try:
                 async with ClientSession() as session:
                     async with session.get(base+'/status') as response:self.assertEqual(response.status,401)
+                    async with session.get(base+'/ping?time=1') as response:
+                        self.assertEqual(response.status,200);self.assertEqual(await response.read(),b'')
+                        self.assertGreater(int(response.headers['x-ayla-server-time']),0)
+                    async with session.post(base+'/ping',json={}) as response:self.assertEqual(response.status,401)
                     headers={'Authorization':'Bearer synthetic-management-token'}
                     async with session.get(base+'/status',headers=headers) as response:
                         self.assertEqual(response.status,200);self.assertFalse((await response.json())['active'])

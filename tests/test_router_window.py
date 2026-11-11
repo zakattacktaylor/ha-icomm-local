@@ -58,6 +58,6 @@ class OfflineWindowTests(unittest.TestCase):
             self.assertEqual(result.returncode,1)
             calls=(root/'calls').read_text()
             self.assertIn('-D FORWARD',calls)
-            self.assertEqual(calls.count('-D PREROUTING'),2)
-            self.assertEqual(calls.count('-D POSTROUTING'),2)
+            self.assertEqual(calls.count('-D PREROUTING'),3)
+            self.assertEqual(calls.count('-D POSTROUTING'),3)
             self.assertNotIn(' -F',calls)

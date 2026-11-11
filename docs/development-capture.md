@@ -1,7 +1,9 @@
 # Green-hosted capture harness
 
-Current outcome: one-time local provisioning enables the native LAN integration.
-Reads, target changes and cold-start recovery passed with the emulator stopped.
+Current outcome: local provisioning enables the native LAN integration.
+Reads and cold-start recovery passed with the emulator stopped. Target changes
+passed with the local backend running, but LAN-only writes subsequently received
+ACK200 without actuation; ongoing backend requirements remain unresolved.
 See [current architecture](local-control-architecture.md); the sections below
 record the development sequence and its earlier, superseded limitations.
 
@@ -13,7 +15,9 @@ Real heater traffic and UDP decoding remain separate acceptance gates.
 ## Behavior
 
 - The management API listens on TCP 8787 and requires a per-installation bearer
-  token on every route. It has no unauthenticated health/status endpoint.
+  token on management routes. The sole exception is `GET /ping`, restricted to
+  explicitly allowed source addresses, returning an empty response and server time
+  for the heater's plain-HTTP recovery check. Status and control remain authenticated.
 - POST `/capture/start` starts one recording window of 10–300 seconds. TLS on
   8444 and UDP on 55055/55056 exist only during that window.
 - TLS terminates locally and makes a separately verified connection to the real
@@ -105,7 +109,7 @@ with no upstream network client. Authenticated management routes are:
 - `PUT /emulator/profile`: provision private captured identity XML, device ID,
   DSN, local ANS IPv4 address and optional existing registration ID. Never commit
   this profile. Provisioning is refused while either implementation is active.
-- `POST /emulator/start` with `seconds` (10–300), `/emulator/stop`, and
+- `POST /emulator/start` with `seconds` (10–900), `/emulator/stop`, and
   `GET /emulator/status`: bounded runtime, fresh telemetry and event summaries.
 - `POST /emulator/notify`: an empty-command notification for transport testing.
 - `POST /emulator/control` with `kind` (`target` or `mode`) and `value`: requires
@@ -115,7 +119,7 @@ with no upstream network client. Authenticated management routes are:
 
 Capture and emulation are mutually exclusive. A generated local auth token is
 used in responses; captured cloud authentication headers are not replayed.
-`tools/router-emulator-window.sh` provides a separate maximum-240-second router
+`tools/router-emulator-window.sh` provides a separate maximum-900-second (default 240) router
 watchdog for source-scoped redirects and routed IPv4/IPv6 denial. Its LAN subnet
 is currently specific to the development installation and must be reviewed
 before using elsewhere. These rules are not a persistent production deployment.

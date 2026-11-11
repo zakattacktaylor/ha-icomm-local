@@ -1,9 +1,17 @@
-# Local control: provisioning once, native LAN afterward
+# Local control: native LAN and unresolved backend dependency
 
 Validated on an A. O. Smith HPTS-80, controller 5.4, iCOMM network firmware
 bc2.11.4. Other models/versions require their own validation.
 
-## Runtime
+## Runtime validation status
+
+**Open issue:** after the permanent Internet block and provisioning-service stop,
+two 129°F requests were acknowledged but not reflected in readback; 130°F was
+confirmed restored. The successful earlier 129→130°F test had the local server
+running. Reads and physical cold-start recovery alone do not prove that every
+runtime service can be removed. A bounded backend-present comparison is in
+progress. The related agent has an explicit MCU-overflow path that acknowledges
+but drops writes; this is a hypothesis, not a diagnosis for this firmware.
 
 Home Assistant's `icomm_local` integration communicates directly with the heater
 using Ayla's authenticated LAN callback protocol. Home Assistant runs the callback
@@ -11,8 +19,9 @@ listener, performs key exchange, requests fresh `superBlockDyn1` values and send
 validated `setBlockParameter` writes. The installation key is stored in the HA
 config entry and backups. The heater stores its LAN-enable setting and key.
 
-No vendor account, cloud API, cloud emulator, MQTT broker or NUC protocol service
-is required for this tested runtime path. Block the heater's Internet access
+No vendor account, real cloud API, MQTT broker or NUC protocol service is used
+for the tested LAN path. Whether a fully local keepalive server must remain
+available for reliable writes is still being validated. Block the heater's Internet access
 while preserving its LAN access: an ordinary vendor identity response can disable
 LAN access again. Do not use a router action that disconnects the device from
 Wi-Fi or blocks its local network access.

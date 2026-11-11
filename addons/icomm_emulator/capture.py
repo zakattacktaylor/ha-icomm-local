@@ -266,11 +266,18 @@ def archive(directory):
 def create_app(harness, token):
     @web.middleware
     async def authentication(request, handler):
+        if request.path=='/ping' and request.method=='GET':
+            if request.remote not in harness.allowed_peers:raise web.HTTPForbidden()
+            return await handler(request)
         supplied=request.headers.get('Authorization','')
         if not hmac.compare_digest(supplied,'Bearer '+token):raise web.HTTPUnauthorized()
         return await handler(request)
     app=web.Application(middlewares=[authentication],client_max_size=8192)
-    async def status(request):return web.json_response(harness.status())
+    async def status(request):return web.json_response(dict(harness.status(),http_ping_count=getattr(harness,'http_ping_count',0)))
+    async def ping(request):
+        harness.http_ping_count=getattr(harness,'http_ping_count',0)+1
+        return web.Response(body=b'',headers={'x-ayla-server-time':str(int(time.time()))})
+    app.router.add_get('/ping',ping)
     async def start(request):
         try:return web.json_response(await harness.start(await request.json()))
         except (ValueError,KeyError) as error:raise web.HTTPBadRequest(text=str(error)) from None
@@ -309,7 +316,7 @@ def create_app(harness, token):
             return web.json_response({'configured':True})
         except (ValueError,KeyError,TypeError) as error:raise web.HTTPBadRequest(text='Invalid private profile') from None
     async def emulator_stop(request):return web.json_response(await emulator.stop())
-    async def emulator_status(request):return web.json_response(emulator.status())
+    async def emulator_status(request):return web.json_response(dict(emulator.status(),http_ping_count=getattr(harness,'http_ping_count',0)))
     async def emulator_notify(request):
         try:return web.json_response(emulator.notify())
         except ValueError as error:raise web.HTTPConflict(text=str(error)) from None
