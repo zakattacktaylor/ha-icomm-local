@@ -72,3 +72,11 @@ https://docs.aylanetworks.com/docs/templates#lan-mode
 This does not establish whether A. O. Smith exposes that setting through an
 unidentified app-facing operation. An app APK mirror download attempt returned
 403; no app binary was downloaded or executed in this investigation.
+
+## Subsequent app inspection
+
+The app's actual metadata call site has now been traced to the key `timeOfUse`,
+used for rate-plan storage/deletion. No LAN-enable use was identified. See
+[the static app investigation](app-analysis.md) for version, hashes, evidence,
+and limits. This resolves the app-side metadata lead without writing guesses
+to the heater or account.

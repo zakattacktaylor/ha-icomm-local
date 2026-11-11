@@ -69,3 +69,5 @@ Protocol discoveries and prior implementation references:
 This is an independent community project, unaffiliated with A.O. Smith or Ayla.
 
 Read-only findings about the embedded web server are in [HTTP surface observations](docs/http-surface.md).
+
+The app-side metadata investigation is documented in [Android app analysis](docs/app-analysis.md).
