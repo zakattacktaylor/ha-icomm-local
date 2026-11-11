@@ -1,10 +1,11 @@
 import struct
+import hashlib
 import sys
 import unittest
 from pathlib import Path
 from cryptography.hazmat.primitives.ciphers import Cipher,algorithms,modes
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from custom_components.icomm_local.ans import crc8,decode_datagram
+from custom_components.icomm_local.ans import crc8,decode_datagram,verify_registration,encode_datagram
 
 class AnsDecoderTests(unittest.TestCase):
     def test_encrypted_keepalive_and_wrong_key(self):
@@ -32,3 +33,22 @@ class AnsDecoderTests(unittest.TestCase):
 
     def test_truncated_encrypted_datagram_is_rejected(self):
         with self.assertRaises(ValueError):decode_datagram(b'\x04'+bytes(23),bytes(16))
+
+    def test_registration_signature_and_tampering(self):
+        key=bytes(range(16));dsn=b'SYNTHETIC-ONLY\0'
+        data=bytes((0,0,len(dsn)))+dsn+struct.pack('>BBHIH',1,1,1,1000,30)
+        packet=data+hashlib.sha1(data+key).digest()
+        self.assertTrue(verify_registration(packet,key))
+        self.assertFalse(verify_registration(packet,bytes(16)))
+        self.assertFalse(verify_registration(packet[:-1]+bytes((packet[-1]^1,)),key))
+
+    def test_encrypted_response_and_notify_encoding(self):
+        key=bytes(range(16));reg=bytes.fromhex('01020304');iv=bytes(range(16))
+        for operation,payload in ((2,struct.pack('>HB',30,0)),(8,b'\0'),(9,b''),(6,b'\0')):
+            packet=encode_datagram(operation,17,12345,reg,key,payload,iv)
+            decoded=decode_datagram(packet,key)
+            self.assertEqual(packet[4:8],reg)
+            self.assertEqual(decoded['sequence'],17)
+            self.assertTrue(decoded['crc_valid'])
+            if operation==2:self.assertEqual(decoded['interval_seconds'],30)
+            if operation==9:self.assertEqual(decoded['operation'],'notify')

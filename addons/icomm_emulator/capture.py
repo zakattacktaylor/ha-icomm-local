@@ -157,7 +157,12 @@ class HTTPSForwarder:
         finally:
             writer.close()
             if remote_writer:remote_writer.close()
-            await asyncio.gather(writer.wait_closed(), *([remote_writer.wait_closed()] if remote_writer else []), return_exceptions=True)
+            writers = [writer]+([remote_writer] if remote_writer else [])
+            try:
+                await asyncio.wait_for(asyncio.gather(
+                    *(item.wait_closed() for item in writers), return_exceptions=True), 3)
+            except TimeoutError:
+                for item in writers:item.transport.abort()
             self.tasks.discard(task)
 
     async def close(self):
@@ -236,6 +241,7 @@ class Harness:
     async def _stop(self):
         if not self.capture_id:return
         self.last_status = self.status()
+        self.last_status['active'] = False
         self.last_status['stopped_unix'] = time.time()
         if self.timer and self.timer is not asyncio.current_task():
             self.timer.cancel()
