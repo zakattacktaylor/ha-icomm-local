@@ -1,11 +1,10 @@
 # Green-hosted capture harness
 
-Current outcome: local provisioning enables the native LAN integration.
-Reads and cold-start recovery passed with the emulator stopped. Target changes
-passed with the local backend running, but LAN-only writes subsequently received
-ACK200 without actuation; ongoing backend requirements remain unresolved.
-See [current architecture](local-control-architecture.md); the sections below
-record the development sequence and its earlier, superseded limitations.
+Current outcome: the owner selected a full Green-hosted cloud replacement after
+LAN-only control proved unreliable. HTTPS/UDP registration, HA target and mode
+changes, persistent routing, local DNS recovery and periodic telemetry passed.
+See [current architecture](local-control-architecture.md). The sections below
+are a chronological research record; their earlier limitations are historical.
 
 Implementation: `addons/icomm_emulator`. This is the first development milestone,
 not a finished cloud replacement. The add-on has been built on an ARM64 Green,

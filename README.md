@@ -1,76 +1,53 @@
 # iCOMM Local for Home Assistant
 
-An experimental local-control project for A.O. Smith iCOMM NextGen heat-pump water
-heaters. Developed against an HPTS-80 (controller firmware 5.4).
+An experimental local cloud replacement for A.O. Smith iCOMM NextGen heat-pump
+water heaters, developed against an HPTS-80 (controller 5.4, network bc2.11.4).
 
-**Development status:** native LAN reads and a 130→129→130°F target test passed
-on Home Assistant Green with Internet access blocked and the local backend running. Fresh LAN
-readback also recovered after an integration reload and a physical heater reboot
-while the provisioning server was stopped. This remains an experimental,
-single-model project rather than a broadly validated community release.
+The Home Assistant Green runs replacement HTTPS and UDP notification services.
+The heater uses its normal cloud protocol, redirected inside the home; the HA
+integration talks to the local service. The heater's vendor Internet access is
+blocked. The development computer is not part of the runtime design.
 
-## Architecture
+**Validated:** registration, notifications, command fetches, telemetry and a
+130→129→130°F target test through HA with persistent heater-scoped router rules
+and Internet access blocked. Heat Pump→Hybrid mode changes, local DNS recovery,
+and steady 60-second reporting also passed. Installation is still experimental and specific to
+one tested firmware/model. Extended soak and physical power-loss tests remain.
+The direct LAN callback route was unreliable and is retired for this deployment.
 
-The Green-hosted local cloud emulator enables the heater's native LAN API and
-supplies a private key. Its ongoing role in reliable control remains unresolved.
-Home Assistant uses the LAN callback integration directly. Reads and reboot
-recovery passed with the emulator stopped; write reliability in that configuration
-is still under investigation. A local keepalive service may be required by this
-firmware. No vendor Internet access is enabled during these tests. Keep the heater's
-Internet
-access blocked so vendor configuration does not disable LAN access again.
+## Installation outline
 
-See the [current architecture and hardware evidence](docs/local-control-architecture.md)
-and [provisioning/development procedure](docs/development-capture.md). The
-[original full-cloud-emulation plan](docs/cloud-emulator-plan.md) records the
-research path that led to this simpler runtime.
+1. Back up Home Assistant. Obtain the heater's private identity profile during
+   commissioning; this is not a universal out-of-box onboarding replacement.
+2. Install `addons/icomm_emulator`, set a strong management token and exact
+   allowed heater/gateway IPv4 addresses. Provision its private profile through
+   the authenticated API while continuous startup is disabled.
+3. Configure persistent router redirects for **only the heater**, with return
+   SNAT where the heater and Green share a subnet. Keep a separate IPv4/IPv6
+   Internet block. See [runtime architecture](docs/local-control-architecture.md).
+4. Enable the add-on's `emulator_autostart`, Start on boot and watchdog. It then
+   runs continuously. Capture and bounded test modes cannot overlap emulation.
+5. Copy `custom_components/icomm_local` to HA's custom components, restart HA,
+   add **iCOMM Local → Local emulator add-on**, and supply the Green's address,
+   management port 8787 and separate management token.
+
+The service requires no vendor account or NUC process during operation. Initial
+profile acquisition may require the original vendor setup and a private capture.
+The vendor phone app is outside this offline control path. Physical heater
+controls remain available.
+
+Keep identity profiles, notification/LAN keys, management tokens, captures and
+HA backups private. No owner credentials or vendor source bundles are included.
+See the [add-on instructions](addons/icomm_emulator/README.md) and
+[development capture history](docs/development-capture.md).
 
 ## Development
 
-Python 3.13+; install `requirements-dev.txt` in a virtual environment, then:
-
 ```sh
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -q
 ```
 
-For a provisioned device, copy `custom_components/icomm_local` into Home
-Assistant's `custom_components` directory and restart. Add **iCOMM Local** in
-Settings → Devices & services, choose **Previously provisioned LAN key**, and enter the heater IPv4 address, HA callback
-IPv4 address, LAN key/key ID, and callback port (default 8888). Reserve both
-IP addresses. Keep callback traffic on a trusted LAN; no Internet port forwards.
-Only one local controller should manage the heater's callback session.
-
-The initial control limit is 95–130°F. A lower configurable maximum is supported.
-Higher targets, firmware updates, registration changes, and fault resets are
-not exposed. Electric and Vacation use a one-day duration in this preview;
-Vacation temporarily lowers the heater's target to approximately 50°F. Switching
-back to Hybrid restores the prior normal target on the tested heater.
-
-## Privacy and security
-
-The LAN key is stored in Home Assistant's config entry and backups; treat it as
-an appliance credential. It is sent to the heater only during provisioning, and
-used to derive AES-CBC/HMAC-SHA256 session keys afterward. Incoming updates must
-pass signature and sequence validation, and originate from the configured
-heater IPv4 address. This is the vendor's legacy protocol, not a claim that it
-meets modern TLS security expectations.
-
-Do not publish credentials, tokens, raw cloud captures, DSNs, serial numbers,
-Wi-Fi details, or private keys. This repository contains synthetic test fixtures
-and generic protocol examples only. Deleting the HA integration stops callbacks;
-it does not erase the heater's provisioned LAN key. Preserve the key for recovery.
-
-## Credits
-
-Protocol discoveries and prior implementation references:
-
-- [ericboehs/aosmith-water-heater](https://github.com/ericboehs/aosmith-water-heater)
-- [deiger/AirCon](https://github.com/deiger/AirCon)
-- [bdr99/py-aosmith](https://github.com/bdr99/py-aosmith) for the cloud API used
-  during characterization; this integration does not use that API at runtime.
-
-This is an independent community project, unaffiliated with A.O. Smith or Ayla.
-
-Read-only findings about the embedded web server are in [HTTP surface observations](docs/http-surface.md).
-
-The app-side metadata investigation is documented in [Android app analysis](docs/app-analysis.md).
+Tests cover protocol framing, cryptography, replay checks, authenticated
+management, command expiry/readback, startup, local DNS and scoped trial cleanup.
+Live appliance validation remains essential; an HTTP acknowledgement alone does
+not prove that the heater accepted a setting.

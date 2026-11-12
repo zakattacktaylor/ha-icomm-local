@@ -29,6 +29,7 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
             'identity_xml':f'<device><ans-cipher-key>{key}</ans-cipher-key><ans-server>cloud.invalid</ans-server></device>'}
         (self.root/'profile.json').write_text(json.dumps(profile))
         self.service=LocalService(self.root,['127.0.0.1']);self.service.load_profile()
+        self.service.profile['debug_property_reads']=True
         self.service.active=True
         self.channel=Notifications(self.service,55055);self.channel.connection_made(Transport())
         self.service.udp=[self.channel]
@@ -129,6 +130,37 @@ class EmulatorTests(unittest.IsolatedAsyncioTestCase):
         event=self.service.events[-1]
         self.assertEqual(event[2],{'query_keys':['ans']})
         self.assertNotIn('synthetic-private-value',str(event))
+
+    def test_profile_validates_reporting_interval_before_startup(self):
+        profile=json.loads((self.root/'profile.json').read_text())
+        for rate in (60,21601):
+            profile['reporting_rate']=rate
+            self.service.load_profile(profile)
+            self.assertEqual(self.service.profile['reporting_rate'],rate)
+        for rate in (0,30,60.5,'60'):
+            profile['reporting_rate']=rate
+            with self.assertRaises(ValueError):self.service.load_profile(profile)
+
+    async def test_reporting_configuration_is_sent_even_if_early_telemetry_arrives(self):
+        self.service.profile['reporting_mask']='01,01,01,01'
+        self.service.profile['reporting_rate']=60
+        self.service.reading_at=time.time()
+        response=await self.client.get('/devices/123/commands.xml');root=ET.fromstring(await response.read())
+        values={p.findtext('name'):p.findtext('value') for p in root.findall('.//property')}
+        self.assertEqual(values['superBlockDynDataUpdateRate'],'60')
+        response=await self.client.get('/devices/123/commands.xml');root=ET.fromstring(await response.read())
+        self.assertEqual(len(root.find('properties')),0)
+
+    async def test_normal_cloud_profile_does_not_issue_lan_property_queries(self):
+        self.service.profile.pop('debug_property_reads',None)
+        response=await self.client.get('/devices/123/commands.xml')
+        root=ET.fromstring(await response.read())
+        self.assertIsNone(root.find('.//cmd'))
+
+    def test_diagnostics_event_history_is_bounded(self):
+        for n in range(500):self.service.events.append(('synthetic',n))
+        self.assertLessEqual(len(self.service.events),200)
+        self.assertEqual(len(self.service.status()['events']),30)
 
     async def test_https_ping_returns_server_time_for_recovery(self):
         response=await self.client.get('/ping?time=1')

@@ -33,7 +33,7 @@ class LocalWaterHeater(LocalEntity, WaterHeaterEntity):
     @property
     def extra_state_attributes(self):
         return {'duration_days': self.heater.state.duration_days if self.heater.state else None,
-                'connection': 'local', 'last_local_update': self.heater.last_update,
+                'connection': 'local', 'protocol': 'emulated_cloud' if self.entry.data.get('connection')=='emulator' else 'lan', 'last_local_update': self.heater.last_update,
                 'last_error': self.heater.last_error}
 
     async def async_set_temperature(self, **kwargs):

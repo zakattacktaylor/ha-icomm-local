@@ -9,11 +9,11 @@ class EmulatorHeater:
     def __init__(self, session, host, token, on_update, port=8787):
         self.session,self.base,self.token=session,f'http://{host}:{port}',token
         self.on_update=on_update;self.state=None;self.last_update=0;self.last_error=None
-        self.active=False;self.task=None;self.control_lock=asyncio.Lock()
+        self.active=False;self.registered=False;self.task=None;self.control_lock=asyncio.Lock()
 
     @property
     def available(self):
-        return self.active and self.state is not None and time.time()-self.last_update<120
+        return self.active and self.registered and self.last_error is None and self.state is not None and time.time()-self.last_update<180
 
     async def request(self, path, data=None):
         try:
@@ -27,10 +27,11 @@ class EmulatorHeater:
 
     async def refresh(self):
         status=await self.request('/emulator/status')
-        self.active=status['active']
+        self.active=status['active'];self.registered=status['registered']
         if status.get('reading') is not None:
             self.state=Telemetry(**status['reading'])
             self.last_update=time.time()-status['reading_age_seconds']
+        else:self.state=None;self.last_update=0
         self.last_error=None
         self.on_update()
         return status

@@ -10,7 +10,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        return self.async_show_menu(step_id='user',menu_options=['lan','emulator'])
+        return self.async_show_menu(step_id='user',menu_options=['emulator','lan'])
 
     async def async_step_emulator(self,user_input=None):
         errors={}

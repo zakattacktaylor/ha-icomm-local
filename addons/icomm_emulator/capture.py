@@ -1,7 +1,8 @@
-"""Bounded byte-preserving capture service. No generated heater commands.
+"""Local cloud emulator and mutually exclusive bounded capture harness.
 
-Private captures contain device secrets. Management API requires a separate
-installation token. Listener lifetime is independently bounded on the Green.
+Private profiles/captures contain device secrets. Management requires a separate
+installation token. Continuous emulation is an explicit startup configuration;
+the capture and management-start test windows remain independently bounded.
 """
 import asyncio
 from collections import deque
@@ -263,7 +264,7 @@ def archive(directory):
     return buffer.getvalue()
 
 
-def create_app(harness, token):
+def create_app(harness, token, autostart=False):
     @web.middleware
     async def authentication(request, handler):
         if request.path=='/ping' and request.method=='GET':
@@ -297,7 +298,9 @@ def create_app(harness, token):
     async def emulator_start(request):
         if harness.capture_id:raise web.HTTPConflict(text='Capture is active')
         try:
-            return web.json_response(await emulator.start((await request.json()).get('seconds',300),harness.tls_context()))
+            seconds=(await request.json()).get('seconds',300)
+            if not isinstance(seconds,int) or not 10<=seconds<=900:raise ValueError('Lifetime must be 10–900 seconds')
+            return web.json_response(await emulator.start(seconds,harness.tls_context()))
         except (ValueError,KeyError,FileNotFoundError) as error:raise web.HTTPBadRequest(text=str(error)) from None
     async def emulator_profile(request):
         if emulator.active or harness.capture_id:raise web.HTTPConflict(text='Stop listeners before provisioning')
@@ -311,6 +314,7 @@ def create_app(harness, token):
             if not ipaddress.IPv4Address(profile['local_ans_host']).is_private:raise ValueError('Expected a local ANS address')
             seed=profile.get('resume_registration_id')
             if seed is not None and len(bytes.fromhex(seed))!=4:raise ValueError('Invalid registration ID')
+            emulator.load_profile(profile)
             target=harness.root/'profile.json';temporary=target.with_suffix('.tmp')
             temporary.write_text(json.dumps(profile));temporary.chmod(0o600);temporary.replace(target)
             return web.json_response({'configured':True})
@@ -336,6 +340,9 @@ def create_app(harness, token):
     app.router.add_get('/emulator/status',emulator_status)
     app.router.add_post('/emulator/control',emulator_control)
     app.router.add_post('/emulator/notify',emulator_notify)
+    async def start_emulator(app):
+        if autostart:await emulator.start(None,harness.tls_context(),continuous=True)
+    app.on_startup.append(start_emulator)
     async def close_emulator(app):await emulator.stop()
     app.on_cleanup.append(close_emulator)
     app.router.add_get('/status',status)
@@ -365,13 +372,13 @@ async def main():
     for peer in peers:ipaddress.IPv4Address(peer)
     await asyncio.to_thread(prepare_tls,root)
     harness=Harness(root,peers)
-    runner=web.AppRunner(create_app(harness,token),access_log=None)
+    runner=web.AppRunner(create_app(harness,token,options.get('emulator_autostart',False)),access_log=None)
     await runner.setup()
     await web.TCPSite(runner,'0.0.0.0',8787).start()
     stopped=asyncio.Event()
     loop=asyncio.get_running_loop()
     for sig in (signal.SIGTERM,signal.SIGINT):loop.add_signal_handler(sig,stopped.set)
-    print('iCOMM harness ready; recording listeners disabled until a bounded capture starts',flush=True)
+    print('iCOMM service ready; continuous emulation='+str(options.get('emulator_autostart',False)),flush=True)
     try:await stopped.wait()
     finally:await harness.stop();await runner.cleanup()
 

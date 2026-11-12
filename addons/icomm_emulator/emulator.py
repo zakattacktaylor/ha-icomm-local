@@ -4,6 +4,7 @@ The private profile supplies the captured identity and current ANS key. No cloud
 commands, firmware responses or schedules are replayed from that profile.
 """
 import asyncio
+from collections import deque
 import base64
 from dataclasses import asdict
 import json
@@ -18,6 +19,7 @@ import xml.etree.ElementTree as ET
 from aiohttp import web
 from ans import decode_datagram, encode_datagram, verify_registration
 from protocol import telemetry, setpoint_frame, mode_frame
+from local_dns import LocalDNS
 
 READ_RESOURCES=('property.json?name=superBlockDyn1','/property.json?name=superBlockDyn1','properties.json?name=superBlockDyn1','/properties.json?name=superBlockDyn1')
 
@@ -105,12 +107,12 @@ class LocalService:
     def __init__(self, root, allowed_peers):
         self.root, self.allowed_peers = Path(root), set(allowed_peers)
         self.active=False;self.runner=None;self.udp=[];self.tasks=set();self.timer=None
-        self.ping_server=None;self.ping_writers=set()
+        self.ping_server=None;self.ping_writers=set();self.dns=None
         self.profile=None;self.key=None;self.dsn=None;self.device_id=None
         self.registration_id=None;self.peer=None;self.notify_sequence=0
-        self.pending=None;self.reading=None;self.reading_at=0;self.events=[]
+        self.pending=None;self.reading=None;self.reading_at=0;self.events=deque(maxlen=200)
         self.invalid_datagrams=0;self.expires=0;self.started_at=0;self.key_refresh_sent=False
-        self.uploads={};self.rejected_uploads=0
+        self.uploads={};self.rejected_uploads=0;self.reporting_pending=True
         self.read_queued=True;self.read_id=secrets.randbelow(1<<30);self.awaiting_read=None;self.last_read_sent=0;self.last_read_status=None;self.read_resource_index=0;self.lan_setup_pending=False;self.lan_setup_id=None;self.lan_setup_status=None
 
     def status(self):
@@ -120,10 +122,11 @@ class LocalService:
             'pending':self.pending is not None,'invalid_datagrams':self.invalid_datagrams,
             'uploads':self.uploads,'rejected_uploads':self.rejected_uploads,'last_read_status':self.last_read_status,'read_resource_index':self.read_resource_index,
             'lan_setup_status':getattr(self,'lan_setup_status',None),
-            'events':self.events[-30:]}
+            'dns':self.dns.status() if self.dns else None,
+            'events':list(self.events)[-30:]}
 
-    def load_profile(self):
-        profile=json.loads((self.root/'profile.json').read_text())
+    def load_profile(self, profile=None):
+        if profile is None:profile=json.loads((self.root/'profile.json').read_text())
         if profile.get('response_framing','chunked') not in ('chunked','length'):raise ValueError('Invalid response framing')
         identity=ET.fromstring(profile['identity_xml'])
         key=base64.b64decode(identity.findtext('ans-cipher-key'),validate=True)[:16]
@@ -133,13 +136,19 @@ class LocalService:
         if mask is not None and (not isinstance(mask,str) or len(mask)>1024 or not re.fullmatch(r'[01]+(?:,[01]+){3}',mask)):
             raise ValueError('Invalid reporting mask')
         rate=profile.get('reporting_rate')
-        if rate is not None and (not isinstance(rate,int) or rate!=21601):raise ValueError('Unvalidated reporting rate')
+        if rate is not None and (not isinstance(rate,int) or rate not in (60,21601)):raise ValueError('Unvalidated reporting rate')
         lanip=profile.get('lanip')
         if lanip is not None:
             key=lanip.get('lanip_key','')
             if not isinstance(key,str) or not key.isascii() or not 16<=len(key)<=32:raise ValueError('Invalid LAN key')
             if lanip.get('status')!='enable' or not isinstance(lanip.get('lanip_key_id'),int) or not 1<=lanip['lanip_key_id']<=65535:raise ValueError('Invalid LAN key ID')
             if lanip.get('keep_alive')!=30:raise ValueError('Invalid LAN heartbeat')
+        hosts=profile.get('dns_hosts',{})
+        if not isinstance(hosts,dict) or len(hosts)>8:raise ValueError('Invalid DNS hosts')
+        for hostname,address in hosts.items():
+            if not isinstance(hostname,str) or len(hostname)>253 or not re.fullmatch(r'[A-Za-z0-9.-]+',hostname) or any(not 1<=len(label)<=63 for label in hostname.split('.')):raise ValueError('Invalid DNS hostname')
+            ip=__import__('ipaddress').IPv4Address(address)
+            if not ip.is_private or ip.is_loopback or ip.is_unspecified:raise ValueError('DNS answers must remain on the LAN')
         self.profile=profile
         self.lan_setup_pending=lanip is not None
         self.lan_setup_id=None;self.lan_setup_status=None
@@ -150,33 +159,39 @@ class LocalService:
             if self.active:channel.reply(5,sequence,b'',peer)
         task=asyncio.create_task(later());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
 
-    async def start(self, seconds, tls_context):
+    async def start(self, seconds, tls_context, *, continuous=False):
         if self.active:raise ValueError('Emulator already active')
-        if not isinstance(seconds,int) or not 10<=seconds<=900:raise ValueError('Lifetime must be 10–900 seconds')
-        self.load_profile();self.registration_id=None;self.peer=None;self.pending=None
-        self.reading=None;self.reading_at=0;self.events=[];self.invalid_datagrams=0;self.key_refresh_sent=False
-        self.uploads={};self.rejected_uploads=0
+        if continuous:
+            if seconds is not None:raise ValueError('Continuous startup takes no lifetime')
+        elif not isinstance(seconds,int) or not 10<=seconds<=900:raise ValueError('Lifetime must be 10–900 seconds')
+        self.load_profile()
+        if continuous and self.profile.get('lanip'):raise ValueError('Continuous mode requires a cloud-only profile')
+        self.registration_id=None;self.peer=None;self.pending=None
+        self.reading=None;self.reading_at=0;self.events=deque(maxlen=200);self.invalid_datagrams=0;self.key_refresh_sent=False;self.last_notify=0
+        self.uploads={};self.rejected_uploads=0;self.reporting_pending=True
         self.read_queued=True;self.read_id=secrets.randbelow(1<<30);self.awaiting_read=None;self.last_read_sent=0;self.last_read_status=None;self.read_resource_index=0;self.lan_setup_pending=self.profile.get('lanip') is not None;self.lan_setup_id=None;self.lan_setup_status=None
-        self.active=True;self.started_at=time.time();self.expires=time.time()+seconds
+        self.active=True;self.started_at=time.time();self.expires=None if continuous else time.time()+seconds
         try:
             app=web.Application(client_max_size=65536)
             app.router.add_route('*','/{path:.*}',self.http)
             self.runner=web.AppRunner(app,access_log=None);await self.runner.setup()
             await web.TCPSite(self.runner,'0.0.0.0',8444,ssl_context=tls_context).start()
             self.ping_server=await asyncio.start_server(self.raw_ping,'0.0.0.0',8788,limit=4096)
+            if self.profile.get('dns_hosts'):
+                self.dns=LocalDNS(self.profile['dns_hosts'],self.allowed_peers);await self.dns.start()
             for port in (55055,55056):
                 channel=Notifications(self,port)
                 transport,_=await asyncio.get_running_loop().create_datagram_endpoint(lambda c=channel:c,local_addr=('0.0.0.0',port))
                 self.udp.append(channel)
             async def expire():
                 await asyncio.sleep(seconds);await self.stop()
-            self.timer=asyncio.create_task(expire())
+            if not continuous:self.timer=asyncio.create_task(expire())
             async def poll_readings():
                 while self.active:
                     await asyncio.sleep(3)
                     interval=3 if self.pending else 30
-                    if self.peer and not self.profile.get('lanip') and self.read_resource_index<len(READ_RESOURCES) and time.time()-self.last_read_sent>=interval:
-                        self.read_queued=True
+                    if self.peer and time.time()-self.last_notify>=interval:
+                        if self.profile.get('debug_property_reads') and self.read_resource_index<len(READ_RESOURCES):self.read_queued=True
                         self.notify()
             polling=asyncio.create_task(poll_readings());self.tasks.add(polling);polling.add_done_callback(self.tasks.discard)
         except BaseException:
@@ -207,6 +222,7 @@ class LocalService:
 
     async def stop(self):
         self.active=False;self.pending=None
+        if self.dns:await self.dns.stop();self.dns=None
         if self.ping_server:
             self.ping_server.close();await self.ping_server.wait_closed();self.ping_server=None
         for writer in list(self.ping_writers):writer.close()
@@ -223,7 +239,7 @@ class LocalService:
     def queue(self, kind, value):
         if not self.active or not self.peer:raise ValueError('Heater has not registered locally')
         if self.pending:raise ValueError('Wait for pending command confirmation')
-        if not self.reading_at or time.time()-self.reading_at>120:raise ValueError('Fresh telemetry required')
+        if not self.reading_at or time.time()-self.reading_at>180:raise ValueError('Fresh telemetry required')
         if kind=='target':frame=setpoint_frame(value)
         elif kind=='mode':frame=mode_frame(value)
         else:raise ValueError('Unsupported control')
@@ -244,6 +260,7 @@ class LocalService:
 
     def notify(self):
         if not self.active or not self.peer:raise ValueError('Heater has not registered locally')
+        self.last_notify=time.time()
         self.notify_sequence=(self.notify_sequence+1)&65535
         self.udp[0].reply(9,self.notify_sequence,b'',self.peer)
         self.events.append(('notify_sent',time.time()))
@@ -303,7 +320,8 @@ class LocalService:
             root=ET.Element('commands');properties=ET.SubElement(root,'properties')
             # Only the verified report-selection request is used during bootstrap.
             # No captured operating mode, firmware or schedules are replayed.
-            if self.profile.get('reporting_mask') and not self.profile.get('lanip') and not self.reading_at:
+            if self.profile.get('reporting_mask') and not self.profile.get('lanip') and (self.reporting_pending or not self.reading_at):
+                self.reporting_pending=False
                 item=ET.SubElement(properties,'property')
                 for name,value in (('base-type','string'),('mime-type',''),('name','periodicParameterSetting'),('value',self.profile['reporting_mask'])):
                     ET.SubElement(item,name).text=value
@@ -321,7 +339,7 @@ class LocalService:
                         ET.SubElement(item,name).text=value
                     self.pending['sent_at']=time.time()
             ET.SubElement(root,'schedules');cmds=ET.SubElement(root,'cmds')
-            if self.read_queued and not self.profile.get('lanip') and self.read_resource_index<len(READ_RESOURCES):
+            if self.profile.get('debug_property_reads') and self.read_queued and not self.profile.get('lanip') and self.read_resource_index<len(READ_RESOURCES):
                 self.read_id+=1;self.awaiting_read=self.read_id
                 command=ET.SubElement(cmds,'cmd')
                 # The agent prefixes resource with '/', but strips '/' from uri.

@@ -1,7 +1,7 @@
-name: iCOMM emulator development harness
-version: "0.3.0-dev13"
+name: iCOMM local cloud service
+version: "0.4.0-dev4"
 slug: icomm_emulator
-description: Bounded HTTPS and UDP capture service for local iCOMM development
+description: Local-only iCOMM HTTPS and UDP cloud replacement
 arch:
   - aarch64
   - amd64
@@ -10,10 +10,13 @@ boot: manual
 stage: experimental
 init: false
 host_network: true
+watchdog: "tcp://[HOST]:8787"
 options:
   api_token: ""
   allowed_peers: []
+  emulator_autostart: false
 schema:
   api_token: password
+  emulator_autostart: bool
   allowed_peers:
     - str

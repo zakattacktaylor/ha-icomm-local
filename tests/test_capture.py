@@ -1,9 +1,11 @@
 import asyncio
+import base64
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import AsyncMock,patch
 from aiohttp import ClientSession,web
 
 import sys
@@ -53,6 +55,41 @@ class UDPTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ManagementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_profile_is_rejected_before_replacing_boot_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);harness=capture.Harness(root,['127.0.0.1'])
+            runner=web.AppRunner(capture.create_app(harness,'synthetic-management-token'))
+            await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
+            base='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])
+            profile={'dsn':'SYNTHETIC','device_id':'123','local_ans_host':'192.0.2.3',
+                'identity_xml':'<device><ans-cipher-key>'+base64.b64encode(bytes(range(64))).decode()+'</ans-cipher-key></device>',
+                'reporting_rate':60}
+            try:
+                async with ClientSession() as session:
+                    headers={'Authorization':'Bearer synthetic-management-token'}
+                    async with session.put(base+'/emulator/profile',headers=headers,json=profile) as response:self.assertEqual(response.status,200)
+                    original=(root/'profile.json').read_bytes();profile['reporting_rate']=30
+                    async with session.put(base+'/emulator/profile',headers=headers,json=profile) as response:self.assertEqual(response.status,400)
+                    self.assertEqual((root/'profile.json').read_bytes(),original)
+            finally:await runner.cleanup()
+
+    async def test_continuous_startup_is_explicit_and_bounded_api_cannot_request_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness=capture.Harness(Path(directory),['127.0.0.1'])
+            with patch.object(harness,'tls_context',return_value='synthetic-context'), patch('emulator.LocalService.start',new_callable=AsyncMock) as start:
+                runner=web.AppRunner(capture.create_app(harness,'synthetic-management-token',autostart=True))
+                await runner.setup()
+                start.assert_awaited_once_with(None,'synthetic-context',continuous=True)
+                site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
+                base='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])
+                try:
+                    async with ClientSession() as session:
+                        for seconds in (None,0,901):
+                            async with session.post(base+'/emulator/start',headers={'Authorization':'Bearer synthetic-management-token'},json={'seconds':seconds}) as response:
+                                self.assertEqual(response.status,400)
+                    self.assertEqual(start.await_count,1)
+                finally:await runner.cleanup()
+
     async def test_ping_rejects_non_allowlisted_peer_even_with_management_token(self):
         with tempfile.TemporaryDirectory() as directory:
             harness=capture.Harness(Path(directory),['192.0.2.8'])
