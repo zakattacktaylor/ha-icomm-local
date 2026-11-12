@@ -1,0 +1,13 @@
+# Keep the default rules. Allow only this fixed, nonfunctional test fixture.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Synthetic provisioning key used only by its unit tests"
+condition = "AND"
+paths = ['''(^|/)tests/test_provision\.py$''']
+regexTarget = "secret"
+regexes = ['''^synthetic-key-123456$''']

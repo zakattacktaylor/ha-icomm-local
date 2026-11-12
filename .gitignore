@@ -5,3 +5,17 @@ __pycache__/
 private/
 *.creds
 *.pem
+
+# Private installation configuration, keys, traffic and scan reports.
+.env
+.env.*
+!.env.example
+secrets.yaml
+profile.json
+options.json
+*.apikey
+*.key
+*.pcap
+*.pcapng
+captures/
+gitleaks-report.*
